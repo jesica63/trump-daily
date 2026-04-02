@@ -1,0 +1,5 @@
+{
+  "name": "Trump Truth Social Archive",
+  "description": "A real-time archive and dashboard for Donald Trump's Truth Social posts, automatically updated from CNN's data source.",
+  "requestFramePermissions": []
+}
