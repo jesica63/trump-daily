@@ -1,0 +1,20 @@
+name: 川普每日摘要
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天台北時間 09:00（UTC 01:00）
+  workflow_dispatch:      # 允許手動觸發
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run daily digest
+        run: python trump_dailydigest.py

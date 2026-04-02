@@ -1,0 +1,34 @@
+name: Trump Daily Digest
+
+on:
+  schedule:
+    # 09:07 Asia/Taipei = 01:07 UTC
+    - cron: "7 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+      CNN_ARCHIVE_URL: ${{ secrets.CNN_ARCHIVE_URL }}
+      TRUTH_SOCIAL_ACCOUNT_ID: ${{ secrets.TRUTH_SOCIAL_ACCOUNT_ID }}
+      TRUTH_SOCIAL_API_URL: ${{ secrets.TRUTH_SOCIAL_API_URL }}
+      REQUEST_TIMEOUT: "30"
+      RECENT_HOURS: "24"
+      TRANSLATE_ENABLED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run daily digest
+        run: python3 trump_dailydigest.py
