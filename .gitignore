@@ -1,0 +1,7 @@
+__pycache__/
+.DS_Store
+
+trump-truth-social-archive/node_modules/
+trump-truth-social-archive/dist/
+.env
+.env.*
