@@ -22,10 +22,7 @@ from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 # ── 設定 ──────────────────────────────────────────────
-WEBHOOK_URL = os.getenv(
-    "WEBHOOK_URL",
-    "https://script.google.com/macros/s/AKfycbwfY5XMz_Sn1HsLQceIIj-tkVXIvIK2Zu-uXxZSguykNNyO4m1ix_jwMu3shSr_e6da/exec",
-)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 MAIL_TO = os.getenv("MAIL_TO", "reddustblog@gmail.com,imlisaliao@gmail.com,buffycat@gmail.com")
 ARCHIVE_URL = os.getenv("CNN_ARCHIVE_URL", "https://ix.cnn.io/data/truth-social/truth_archive.json")
 TRUTH_SOCIAL_ACCOUNT_ID = os.getenv("TRUTH_SOCIAL_ACCOUNT_ID", "107780257626128497")
