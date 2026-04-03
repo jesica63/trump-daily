@@ -8,6 +8,18 @@ on:
 jobs:
   send-digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+      CNN_ARCHIVE_URL: ${{ secrets.CNN_ARCHIVE_URL }}
+      TRUTH_SOCIAL_ACCOUNT_ID: ${{ secrets.TRUTH_SOCIAL_ACCOUNT_ID }}
+      TRUTH_SOCIAL_API_URL: ${{ secrets.TRUTH_SOCIAL_API_URL }}
+      REQUEST_TIMEOUT: "30"
+      RECENT_HOURS: "24"
+      TRANSLATE_ENABLED: "1"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,4 +29,4 @@ jobs:
           python-version: '3.11'
 
       - name: Run daily digest
-        run: python trump_dailydigest.py
+        run: python3 trump_dailydigest.py
