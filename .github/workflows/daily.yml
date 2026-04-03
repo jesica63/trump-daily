@@ -29,4 +29,24 @@ jobs:
           python-version: '3.11'
 
       - name: Run daily digest
-        run: python3 trump_dailydigest.py
+        run: python3 -u trump_dailydigest.py
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          python3 -c "
+          import urllib.request, urllib.parse, json, os, ssl
+
+          payload = json.dumps({
+              'to': os.environ['MAIL_TO'],
+              'subject': '⚠️ 川普每日摘要：今日執行失敗',
+              'body': 'GitHub Actions workflow 執行失敗，請至以下網址查看 log：\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+          }).encode('utf-8')
+          req = urllib.request.Request(
+              os.environ['WEBHOOK_URL'],
+              data=payload,
+              headers={'Content-Type': 'application/json; charset=utf-8'},
+          )
+          urllib.request.urlopen(req, timeout=30, context=ssl.create_default_context())
+          print('失敗通知已寄出')
+          "

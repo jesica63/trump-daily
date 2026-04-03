@@ -371,9 +371,12 @@ def send_email(subject, body, html_body):
         data=payload,
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
-    with urllib.request.urlopen(req, timeout=30, context=get_ssl_context()) as r:
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=get_ssl_context()) as r:
         result = r.read().decode()
     print(f"寄送結果：{result}")
+    data = json.loads(result)
+    if data.get("status") != "ok":
+        raise RuntimeError(f"Webhook 回報錯誤：{data.get('message', result)}")
     return result
 
 def main():
