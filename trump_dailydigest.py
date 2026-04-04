@@ -1,7 +1,6 @@
-
 #!/usr/bin/env python3
 """
-川普 Truth Social 每日摘要郵件
+川普 Truth Social 每日摘要郵件 (終極優化安全版)
 用法：python3 trump_dailydigest.py
 需求：Python 3.9+，無需額外套件（僅用標準庫）
 """
@@ -16,36 +15,50 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import ssl
+import time
+import traceback
 from datetime import datetime, timezone, timedelta
 from html import unescape
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
-# ── 設定 ──────────────────────────────────────────────
-def getenv_nonempty(name, default):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    value = value.strip()
-    return value if value else default
+# ── 設定與環境變數防呆（最高資安標準） ──────────────────────────────────
+# 1. 絕對不可妥協的機密變數（沒抓到直接報錯，不給預設值防洩漏）
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
+if not WEBHOOK_URL:
+    raise ValueError("❌ 嚴重錯誤：找不到 WEBHOOK_URL 環境變數，請檢查 GitHub Secrets！")
 
+MAIL_TO = os.getenv("MAIL_TO", "").strip()
+if not MAIL_TO:
+    raise ValueError("❌ 嚴重錯誤：找不到 MAIL_TO 環境變數，請檢查 GitHub Secrets！")
 
-WEBHOOK_URL = getenv_nonempty(
-    "WEBHOOK_URL",
-    "https://script.google.com/macros/s/AKfycbwfY5XMz_Sn1HsLQceIIj-tkVXIvIK2Zu-uXxZSguykNNyO4m1ix_jwMu3shSr_e6da/exec",
-)
-MAIL_TO = getenv_nonempty("MAIL_TO", "reddustblog@gmail.com,imlisaliao@gmail.com,buffycat@gmail.com")
-ARCHIVE_URL = getenv_nonempty("CNN_ARCHIVE_URL", "https://ix.cnn.io/data/truth-social/truth_archive.json")
-TRUTH_SOCIAL_ACCOUNT_ID = getenv_nonempty("TRUTH_SOCIAL_ACCOUNT_ID", "107780257626128497")
-TRUTH_SOCIAL_API_URL = getenv_nonempty(
-    "TRUTH_SOCIAL_API_URL",
-    f"https://truthsocial.com/api/v1/accounts/{TRUTH_SOCIAL_ACCOUNT_ID}/statuses?exclude_replies=true",
-)
-REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
-RECENT_HOURS = int(os.getenv("RECENT_HOURS", "24"))
-TRANSLATE_ENABLED = os.getenv("TRANSLATE_ENABLED", "1") != "0"
+# 2. 有預設值也無妨的公開 API / ID
+ARCHIVE_URL = os.getenv("CNN_ARCHIVE_URL", "https://ix.cnn.io/data/truth-social/truth_archive.json").strip()
+TRUTH_SOCIAL_ACCOUNT_ID = os.getenv("TRUTH_SOCIAL_ACCOUNT_ID", "107780257626128497").strip()
+TRUTH_SOCIAL_API_URL = os.getenv(
+    "TRUTH_SOCIAL_API_URL", 
+    f"https://truthsocial.com/api/v1/accounts/{TRUTH_SOCIAL_ACCOUNT_ID}/statuses?exclude_replies=true"
+).strip()
+
+# 3. 數字與布林值轉換防呆
+def getenv_int(name, default):
+    val = os.getenv(name)
+    if val:
+        try:
+            return int(val.strip())
+        except ValueError:
+            print(f"⚠️ 警告：環境變數 {name} 的值 '{val}' 無法轉換為整數，將使用預設值 {default}。")
+    return default
+
+REQUEST_TIMEOUT = getenv_int("REQUEST_TIMEOUT", 30)
+RECENT_HOURS = getenv_int("RECENT_HOURS", 24)
+
+# 只要是 "0", "false", "f", "no" 都視為關閉翻譯
+_translate_env = os.getenv("TRANSLATE_ENABLED", "1").strip().lower()
+TRANSLATE_ENABLED = _translate_env not in ("0", "false", "f", "no")
+
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
-# ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 
 WEEKDAYS = ["一","二","三","四","五","六","日"]
 
@@ -77,7 +90,8 @@ def strip_html(text):
     parser = HTMLTextExtractor()
     parser.feed(text or "")
     parser.close()
-    plain = unescape(" ".join(parser.parts))
+    # 修正：使用 "" join，避免英文單字或標點間產生不必要的空格
+    plain = unescape("".join(parser.parts))
     plain = re.sub(r"\s+", " ", plain)
     return plain.strip()
 
@@ -100,7 +114,6 @@ def get_ssl_context():
         return SSL_CONTEXT
 
     cafile_candidates = []
-
     env_cafile = os.getenv("SSL_CERT_FILE")
     if env_cafile:
         cafile_candidates.append(env_cafile)
@@ -129,26 +142,33 @@ def get_ssl_context():
     print("使用 Python 預設 CA 憑證設定")
     return SSL_CONTEXT
 
-def request_json(url, extra_headers=None):
+def _make_request(url, extra_headers=None):
+    """底層網路請求函數，集中處理 Timeout 與 Error"""
     headers = dict(DEFAULT_HEADERS)
     if extra_headers:
         headers.update(extra_headers)
 
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=get_ssl_context()) as response:
-        charset = response.headers.get_content_charset() or "utf-8"
-        body = response.read().decode(charset, "replace")
-        return response.status, json.loads(body)
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=get_ssl_context()) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            body = response.read().decode(charset, "replace")
+            return response.status, body
+    except urllib.error.HTTPError as e:
+        print(f"⚠️ HTTP 錯誤：{e.code} {e.reason} (URL: {url})")
+        raise
+
+def request_json(url, extra_headers=None):
+    status, body = _make_request(url, extra_headers)
+    try:
+        return status, json.loads(body)
+    except json.JSONDecodeError:
+        print(f"⚠️ JSON 解析失敗！伺服器回傳了非 JSON 格式。前 200 個字元：\n{body[:200]}")
+        raise
 
 def request_text(url, extra_headers=None):
-    headers = dict(DEFAULT_HEADERS)
-    if extra_headers:
-        headers.update(extra_headers)
-
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=get_ssl_context()) as response:
-        charset = response.headers.get_content_charset() or "utf-8"
-        return response.read().decode(charset, "replace")
+    status, body = _make_request(url, extra_headers)
+    return body
 
 def normalize_posts(data):
     if isinstance(data, list):
@@ -188,8 +208,6 @@ def fetch_posts():
         try:
             posts, source = fetcher()
             if posts:
-                print(f"使用資料來源：{source}")
-                print(f"資料庫共 {len(posts)} 筆，篩選近 {RECENT_HOURS} 小時...")
                 return posts, source
             errors.append(f"{fetcher.__name__}: empty result")
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
@@ -218,11 +236,13 @@ def filter_recent(posts, hours=24):
                     'fav': p.get('favourites_count', 0),
                     'rb': p.get('reblogs_count', 0),
                     'rep': p.get('replies_count', 0),
-                    'is_text': len(content) > 10
+                    'is_text': len(content.strip()) > 0  # 修正：只要非空白即算文字貼文
                 })
         except Exception as e:
             print(f"跳過一筆（解析失敗）：{e}")
-    recent.sort(key=lambda x: x['ts'], reverse=True)
+            
+    # 修正：以實際時間物件排序更精準
+    recent.sort(key=lambda x: x['dt_utc'], reverse=True)
     return recent
 
 def split_sentences(text):
@@ -242,14 +262,16 @@ def fallback_chinese_summary(text):
 def html_escape(text):
     return html.escape(text or "", quote=True)
 
-def trim_text(text, limit):
-    text = (text or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3].rstrip() + "..."
-
 def build_html_email(body):
-    escaped = html_escape(body).replace("\n", "<br>")
+    escaped = html_escape(body)
+    
+    # 將 URL 轉換為可點擊的超連結
+    url_pattern = re.compile(r'(https?://[^\s<>]+)')
+    escaped = url_pattern.sub(r'<a href="\1" target="_blank" style="color:#0056b3;">\1</a>', escaped)
+    
+    # 換行轉換為 <br>
+    escaped = escaped.replace("\n", "<br>")
+    
     return (
         "<html><body style='margin:0;padding:20px;background:#ffffff;"
         "font-family:Arial,\"PingFang TC\",\"Microsoft JhengHei\",sans-serif;"
@@ -288,6 +310,10 @@ def build_post_summaries(recent_posts):
         chinese = translate_to_zh_tw(english) or fallback_chinese_summary(post["content"])
         post["key_quote"] = english
         post["zh_summary"] = chinese
+        
+        # 加上短暫延遲，避免排程連續發送被 Google 封鎖 IP
+        if TRANSLATE_ENABLED:
+            time.sleep(0.5)
 
 def build_email(recent):
     now_tp = datetime.now(TAIPEI_TZ)
@@ -364,7 +390,7 @@ def build_email(recent):
     return subject, body, html_body
 
 def send_email(subject, body, html_body):
-    print("正在寄送郵件...")
+    print("   -> 正在打包 JSON 並發送 POST 請求...")
     payload = json.dumps({
         "to": MAIL_TO,
         "subject": subject,
@@ -374,37 +400,69 @@ def send_email(subject, body, html_body):
         "body_b64": base64.b64encode(body.encode("utf-8")).decode("ascii"),
         "html_body_b64": base64.b64encode(html_body.encode("utf-8")).decode("ascii"),
     }).encode("utf-8")
+    
     req = urllib.request.Request(
         WEBHOOK_URL,
         data=payload,
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+    
     with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=get_ssl_context()) as r:
         result = r.read().decode()
-    print(f"寄送結果：{result}")
-    data = json.loads(result)
-    if data.get("status") != "ok":
-        raise RuntimeError(f"Webhook 回報錯誤：{data.get('message', result)}")
-    return result
+        
+    print(f"   -> Webhook 原始回應：{result[:150]}...")
+    
+    try:
+        data = json.loads(result)
+        if data.get("status") != "ok":
+            raise RuntimeError(f"Webhook 回報錯誤：{data.get('message', result)}")
+        return result
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Webhook 回傳了非預期的格式 (GAS 異常)：\n{result[:500]}")
 
 def main():
+    print(f"[{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 開始執行川普每日摘要腳本...")
+    
+    # 1. 抓取資料
+    print("\n>>> [階段 1/4] 開始抓取資料")
     try:
         posts, source = fetch_posts()
+        print(f"✅ 成功獲取資料，來源：{source}")
     except Exception as e:
-        print(f"抓取失敗：{e}")
+        print("\n❌ [階段 1 失敗] 抓取資料時發生嚴重錯誤！完整錯誤訊息如下：")
+        traceback.print_exc()
         sys.exit(1)
 
-    recent = filter_recent(posts, hours=RECENT_HOURS)
-    print(f"近 {RECENT_HOURS} 小時共 {len(recent)} 則貼文（來源：{source}）")
+    # 2. 過濾資料
+    print(f"\n>>> [階段 2/4] 開始過濾近況與解析時間 (篩選近 {RECENT_HOURS} 小時)")
+    try:
+        recent = filter_recent(posts, hours=RECENT_HOURS)
+        print(f"✅ 過濾完成，共 {len(recent)} 則貼文")
+    except Exception as e:
+        print("\n❌ [階段 2 失敗] 過濾資料時發生錯誤！完整錯誤訊息如下：")
+        traceback.print_exc()
+        sys.exit(1)
 
-    subject, body, html_body = build_email(recent)
-    print(f"\n── 郵件預覽 ──\n{body[:500]}...\n")
+    # 3. 組合與翻譯信件
+    print("\n>>> [階段 3/4] 開始產生摘要與建立郵件內容 (可能需要幾秒鐘進行翻譯)")
+    try:
+        subject, body, html_body = build_email(recent)
+        print("✅ 郵件內容建立完成！")
+        print(f"   郵件主旨：{subject}")
+        print(f"   內文預覽：{body[:150].replace(chr(10), ' ')}...") 
+    except Exception as e:
+        print("\n❌ [階段 3 失敗] 組合郵件或翻譯時發生錯誤！完整錯誤訊息如下：")
+        traceback.print_exc()
+        sys.exit(1)
 
+    # 4. 寄送郵件
+    print("\n>>> [階段 4/4] 開始透過 Webhook 寄送郵件")
     try:
         send_email(subject, body, html_body)
-        print("完成！")
+        print(f"\n🎉 [{datetime.now(TAIPEI_TZ).strftime('%Y-%m-%d %H:%M:%S')}] 任務圓滿完成！")
     except Exception as e:
-        print(f"寄送失敗：{e}")
+        print("\n❌ [階段 4 失敗] 寄送郵件時發生錯誤！完整錯誤訊息如下：")
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == '__main__':
