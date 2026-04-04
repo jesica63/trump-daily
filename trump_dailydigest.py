@@ -22,14 +22,22 @@ from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 # ── 設定 ──────────────────────────────────────────────
-WEBHOOK_URL = os.getenv(
+def getenv_nonempty(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
+WEBHOOK_URL = getenv_nonempty(
     "WEBHOOK_URL",
     "https://script.google.com/macros/s/AKfycbwfY5XMz_Sn1HsLQceIIj-tkVXIvIK2Zu-uXxZSguykNNyO4m1ix_jwMu3shSr_e6da/exec",
 )
-MAIL_TO = os.getenv("MAIL_TO", "reddustblog@gmail.com,imlisaliao@gmail.com,buffycat@gmail.com")
-ARCHIVE_URL = os.getenv("CNN_ARCHIVE_URL", "https://ix.cnn.io/data/truth-social/truth_archive.json")
-TRUTH_SOCIAL_ACCOUNT_ID = os.getenv("TRUTH_SOCIAL_ACCOUNT_ID", "107780257626128497")
-TRUTH_SOCIAL_API_URL = os.getenv(
+MAIL_TO = getenv_nonempty("MAIL_TO", "reddustblog@gmail.com,imlisaliao@gmail.com,buffycat@gmail.com")
+ARCHIVE_URL = getenv_nonempty("CNN_ARCHIVE_URL", "https://ix.cnn.io/data/truth-social/truth_archive.json")
+TRUTH_SOCIAL_ACCOUNT_ID = getenv_nonempty("TRUTH_SOCIAL_ACCOUNT_ID", "107780257626128497")
+TRUTH_SOCIAL_API_URL = getenv_nonempty(
     "TRUTH_SOCIAL_API_URL",
     f"https://truthsocial.com/api/v1/accounts/{TRUTH_SOCIAL_ACCOUNT_ID}/statuses?exclude_replies=true",
 )
