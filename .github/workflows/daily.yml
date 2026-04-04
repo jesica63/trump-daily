@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 15
 
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       MAIL_TO: ${{ secrets.MAIL_TO }}
       CNN_ARCHIVE_URL: ${{ secrets.CNN_ARCHIVE_URL }}
