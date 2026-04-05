@@ -1,8 +1,6 @@
 name: 川普每日摘要
 
 on:
-  schedule:
-    - cron: '1 5 * * *'  # 每天台北時間 09:07（UTC 09:07）
   workflow_dispatch:      # 允許手動觸發
 
 jobs:
